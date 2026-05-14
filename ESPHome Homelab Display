@@ -1,0 +1,411 @@
+esphome:
+  name: esp32-homelab-display
+  friendly_name: ESPHome Homelab Display
+
+  on_boot:
+    then:
+      - light.turn_on:
+          id: tft_backlight
+          brightness: 30%
+
+esp32:
+  board: esp32dev
+  framework:
+    type: esp-idf
+
+logger:
+
+api:
+
+mqtt:
+  broker: !secret mqtt_broker
+
+sensor:
+  - platform: mqtt_subscribe
+    id: cluster_cpu
+    topic: homelab/cluster/cpu
+
+  - platform: mqtt_subscribe
+    id: cluster_mem
+    topic: homelab/cluster/mem
+
+  - platform: mqtt_subscribe
+    id: cluster_qemu
+    topic: homelab/cluster/qemu
+
+  - platform: mqtt_subscribe
+    id: cluster_lxc
+    topic: homelab/cluster/lxc
+
+  - platform: mqtt_subscribe
+    id: cluster_storage
+    topic: homelab/cluster/storage
+
+  - platform: mqtt_subscribe
+    id: pve1_cpu
+    topic: homelab/proxmox1/cpu
+
+  - platform: mqtt_subscribe
+    id: pve1_mem
+    topic: homelab/proxmox1/mem
+
+  - platform: mqtt_subscribe
+    id: pve1_storage
+    topic: homelab/proxmox1/storage
+
+  - platform: mqtt_subscribe
+    id: pve2_cpu
+    topic: homelab/proxmox2/cpu
+
+  - platform: mqtt_subscribe
+    id: pve2_mem
+    topic: homelab/proxmox2/mem
+
+  - platform: mqtt_subscribe
+    id: pve2_storage
+    topic: homelab/proxmox2/storage
+
+  - platform: mqtt_subscribe
+    id: pve3_cpu
+    topic: homelab/proxmox3/cpu
+
+  - platform: mqtt_subscribe
+    id: pve3_mem
+    topic: homelab/proxmox3/mem
+
+  - platform: mqtt_subscribe
+    id: pve3_storage
+    topic: homelab/proxmox3/storage
+
+output:
+  - platform: ledc
+    pin: GPIO32
+    id: backlight
+    inverted: true
+
+light:
+  - platform: monochromatic
+    output: backlight
+    name: "TFT1 Backlight"
+    id: tft_backlight
+
+
+text_sensor:
+  - platform: mqtt_subscribe
+    id: cluster_nodes
+    topic: homelab/cluster/nodes
+  
+  - platform: mqtt_subscribe
+    id: cluster_updated
+    topic: homelab/cluster/updated
+
+ota:
+  platform: esphome
+
+wifi:
+  networks:
+  - ssid: !secret wifi_ssid
+    password: !secret wifi_password
+
+spi:
+  clk_pin: GPIO18
+  mosi_pin: GPIO23
+ 
+font:
+  - file: "gfonts://Roboto"
+    id: my_font
+    size: 20
+
+  - file: "gfonts://Roboto"
+    id: font_small
+    size: 16
+
+  - file: "gfonts://Roboto"
+    id: font_mini
+    size: 10
+
+  - file: "gfonts://Roboto"
+    id: font_big
+    size: 20
+
+  - file: "fonts/materialdesignicons-webfont.ttf"
+    id: mdi_icons
+    size: 18
+    glyphs:
+      - "\U000F0EE0" # CPU
+      - "\U000F035B" # RAM
+      - "\U000F1632" # Storage
+
+display:
+  - platform: st7789v
+    id: tft1
+    model: CUSTOM
+    
+    width: 76
+    height: 284
+
+    offset_width: 82
+    offset_height: 18
+
+    cs_pin: GPIO15
+    dc_pin: GPIO17
+    reset_pin: GPIO16
+
+    rotation: 90
+
+    lambda: |-
+
+      auto MY_WHITE  = Color::BLACK;
+      auto MY_BLACK  = Color::WHITE;
+
+      auto MY_RED    = Color(0, 255, 255);
+      auto MY_GREEN  = Color(255, 0, 255);
+      auto MY_BLUE   = Color(255, 255, 0);
+
+      auto MY_YELLOW = Color(0, 0, 255);
+
+      auto DEFAULT_COLOR=MY_WHITE;
+      auto STATUS_COLOR=MY_WHITE;
+
+      it.fill(MY_BLACK);
+      int bar_width = 70;
+      int bar_height = 10;
+
+      // HEADER
+      it.print(0, 0, id(font_big), DEFAULT_COLOR, "Cluster Infos");
+      it.printf(200, 0, id(font_big), DEFAULT_COLOR, "%s", id(cluster_nodes).state.c_str());
+
+      // CPU
+
+      int cpu_percent = (int) id(cluster_cpu).state;
+      STATUS_COLOR=DEFAULT_COLOR;
+      if (cpu_percent > 50 && cpu_percent < 75) { STATUS_COLOR=MY_YELLOW;}
+      if (cpu_percent > 75 && cpu_percent < 100) { STATUS_COLOR=MY_RED; }
+
+      if (cpu_percent > 0 && cpu_percent < 100) { it.printf(0, 24, id(font_small), STATUS_COLOR, "CPU %d%%", cpu_percent);  }
+      it.rectangle(0, 42, bar_width, bar_height, Color(120,120,120));
+      it.filled_rectangle(0, 42, (bar_width * cpu_percent) / 100, bar_height, STATUS_COLOR);
+
+      // RAM
+      int ram_percent = (int) id(cluster_mem).state;
+      STATUS_COLOR=DEFAULT_COLOR;
+      if (ram_percent > 50 && ram_percent < 75) { STATUS_COLOR=MY_YELLOW;}
+      if (ram_percent > 75 && ram_percent < 100) { STATUS_COLOR=MY_RED; }
+
+      if (ram_percent > 0 && ram_percent < 100) { it.printf(100, 24, id(font_small), STATUS_COLOR, "RAM %d%%", ram_percent); }
+      it.rectangle(100, 42, bar_width, bar_height, Color(120,120,120));
+      it.filled_rectangle(100, 42, (bar_width * ram_percent) / 100, bar_height, STATUS_COLOR);
+
+      // STORAGE
+      int sto_percent = (int) id(cluster_storage).state;
+      STATUS_COLOR=DEFAULT_COLOR;
+      if (sto_percent > 50 && sto_percent < 75) { STATUS_COLOR=MY_YELLOW;}
+      if (sto_percent > 75 && sto_percent < 100) { STATUS_COLOR=MY_RED;}
+
+      if (sto_percent > 0 && sto_percent < 100) { it.printf(200, 24, id(font_small), STATUS_COLOR, "STO %d%%", sto_percent); }
+      it.rectangle(200, 42, bar_width, bar_height, Color(120,120,120));
+      it.filled_rectangle(200, 42, (bar_width * sto_percent) / 100, bar_height, STATUS_COLOR);
+
+      // FOOTER
+      it.printf(0, 55, id(font_small), DEFAULT_COLOR, "VM %.0f", id(cluster_qemu).state);
+      it.printf(100, 55, id(font_small), DEFAULT_COLOR, "LXC %.0f", id(cluster_lxc).state);
+      it.printf(240, 65, id(font_mini), DEFAULT_COLOR, "%s", id(cluster_updated).state.c_str());
+
+  - platform: st7789v
+    id: tft2
+    model: CUSTOM
+
+    width: 76
+    height: 284
+
+    offset_width: 82
+    offset_height: 18
+
+    cs_pin: GPIO5
+    dc_pin: GPIO4
+    reset_pin: GPIO2
+
+    rotation: 90
+
+    lambda: |-
+
+      auto MY_WHITE  = Color::BLACK;
+      auto MY_BLACK  = Color::WHITE;
+
+      auto MY_RED    = Color(0, 255, 255);
+      auto MY_GREEN  = Color(255, 0, 255);
+      auto MY_BLUE   = Color(255, 255, 0);
+      auto MY_YELLOW = Color(0, 0, 255);
+
+      auto DEFAULT_COLOR=MY_WHITE;
+      auto STATUS_COLOR=MY_WHITE;
+
+      int start_x = 0;
+      int start_y = 0;
+      int offset_x_value = 96;
+      int offset_y_value = 19;
+      int offset_x_bar = 20;
+      int offset_y_bar = 0;
+      int offset_x_text = 18;
+      int offset_y_text = 2;
+
+      int offset_header=16;
+
+      int pvenumber = 0;
+      int cpu_percent = 0;
+      int ram_percent = 0;
+      int sto_percent = 0;
+
+      int bar_width = 50;
+      int bar_height = 18;
+
+      int severity=0;
+
+      it.fill(MY_BLACK);
+
+      // =========================
+      // PVE1 
+      // =========================
+      pvenumber = 0;
+      severity=0;
+
+      // ==== CPU ================
+      cpu_percent = (int) id(pve1_cpu).state;
+      
+      STATUS_COLOR=DEFAULT_COLOR;
+      if (cpu_percent > 50 && cpu_percent < 75) { STATUS_COLOR=MY_YELLOW;  if (severity < 2) {severity=2;}}
+      if (cpu_percent > 75 && cpu_percent < 100) { STATUS_COLOR=MY_RED;  if (severity < 3) {severity=3;}}
+
+      it.print(start_x + pvenumber * offset_x_value, start_y + 1 * offset_y_value,id(mdi_icons), STATUS_COLOR, "\U000F0EE0");
+      if (cpu_percent > 0 && cpu_percent < 100) { it.printf(start_x + pvenumber * offset_x_value + offset_x_text, start_y + offset_y_text + 1 * offset_y_value, id(font_mini), STATUS_COLOR, "%d%%", cpu_percent);}
+      it.rectangle(start_x + offset_x_bar + pvenumber * offset_x_value + 20, start_y + 1 * offset_y_value, bar_width, bar_height, Color(120,120,120));
+      it.filled_rectangle(start_x + offset_x_bar + pvenumber * offset_x_value + 20, start_y + 1 * offset_y_value, (bar_width * cpu_percent) / 100, bar_height, STATUS_COLOR);
+
+      // ==== RAM ================
+      ram_percent = (int) id(pve1_mem).state;
+
+      STATUS_COLOR=DEFAULT_COLOR;
+      if (ram_percent > 50 && ram_percent < 75) { STATUS_COLOR=MY_YELLOW; if (severity < 2) {severity=2;}}
+      if (ram_percent > 75 && ram_percent < 100) { STATUS_COLOR=MY_RED; if (severity < 3) {severity=3;}}
+
+      it.print(start_x + pvenumber * offset_x_value, start_y + 2 * offset_y_value,id(mdi_icons), STATUS_COLOR, "\U000F035B");
+      if (ram_percent > 0 && ram_percent < 100) { it.printf(start_x + pvenumber * offset_x_value + offset_x_text, start_y + offset_y_text + 2 * offset_y_value, id(font_mini), STATUS_COLOR, "%d%%", ram_percent);}
+      it.rectangle(start_x + offset_x_bar + pvenumber * offset_x_value + 20, start_y + 2 * offset_y_value, bar_width, bar_height, Color(120,120,120));
+      it.filled_rectangle(start_x + offset_x_bar + pvenumber * offset_x_value + 20, start_y + 2 * offset_y_value, (bar_width * ram_percent) / 100, bar_height, STATUS_COLOR);
+
+      // ==== Stockage============
+      sto_percent = (int) id(pve1_storage).state;
+
+      STATUS_COLOR=DEFAULT_COLOR;
+      if (sto_percent > 50 && sto_percent < 75) { STATUS_COLOR=MY_YELLOW; if (severity < 2) {severity=2;}}
+      if (sto_percent > 75 && sto_percent < 100) { STATUS_COLOR=MY_RED; if (severity < 3) {severity=3;}}
+
+      it.print(start_x + pvenumber * offset_x_value, start_y + 3 * offset_y_value,id(mdi_icons), STATUS_COLOR, "\U000F1632");
+      if (sto_percent > 0 && sto_percent < 100) { it.printf(start_x + pvenumber * offset_x_value + offset_x_text, start_y + offset_y_text + 3 * offset_y_value, id(font_mini), STATUS_COLOR, "%d%%", sto_percent);}
+      it.rectangle(start_x + offset_x_bar + pvenumber * offset_x_value + 20, start_y + 3 * offset_y_value, bar_width, bar_height, Color(120,120,120));
+      it.filled_rectangle(start_x + offset_x_bar + pvenumber * offset_x_value + 20, start_y + 3 * offset_y_value, (bar_width * sto_percent) / 100, bar_height, STATUS_COLOR);
+
+      if (severity == 1) {STATUS_COLOR = DEFAULT_COLOR;}
+      if (severity == 2) {STATUS_COLOR = MY_YELLOW;}
+      if (severity == 3) {STATUS_COLOR = MY_RED;}
+      it.print(start_x + offset_header + pvenumber * offset_x_value, start_y + 0 * offset_y_value, id(font_small), STATUS_COLOR, "proxmox1");
+      
+
+
+      // =========================
+      // PVE2
+      // =========================
+      pvenumber = 1;
+      severity=0;
+
+      // ==== CPU ================
+      cpu_percent = (int) id(pve2_cpu).state;
+
+      STATUS_COLOR=DEFAULT_COLOR;
+      if (cpu_percent > 50 && cpu_percent < 75) { STATUS_COLOR=MY_YELLOW;  if (severity < 2) {severity=2;}}
+      if (cpu_percent > 75 && cpu_percent < 100) { STATUS_COLOR=MY_RED;  if (severity < 3) {severity=3;}}
+      
+      it.print(start_x + pvenumber * offset_x_value, start_y + 1 * offset_y_value,id(mdi_icons), STATUS_COLOR, "\U000F0EE0");
+      if (cpu_percent > 0 && cpu_percent < 100) { it.printf(start_x + pvenumber * offset_x_value + offset_x_text, start_y + offset_y_text + 1 * offset_y_value, id(font_mini), STATUS_COLOR, "%d%%", cpu_percent);}
+      it.rectangle(start_x + offset_x_bar + pvenumber * offset_x_value + 20, start_y + 1 * offset_y_value, bar_width, bar_height, Color(120,120,120));
+      it.filled_rectangle(start_x + offset_x_bar + pvenumber * offset_x_value + 20, start_y + 1 * offset_y_value, (bar_width * cpu_percent) / 100, bar_height, STATUS_COLOR);
+
+      // ==== RAM ================
+      ram_percent = (int) id(pve2_mem).state;
+
+      STATUS_COLOR=DEFAULT_COLOR;
+      if (ram_percent > 50 && ram_percent < 75) { STATUS_COLOR=MY_YELLOW;  if (severity < 2) {severity=2;}}
+      if (ram_percent > 75 && ram_percent < 100) { STATUS_COLOR=MY_RED;  if (severity < 3) {severity=3;}}
+
+      it.print(start_x + pvenumber * offset_x_value, start_y + 2 * offset_y_value,id(mdi_icons), STATUS_COLOR, "\U000F035B");
+      if (ram_percent > 0 && ram_percent < 100) { it.printf(start_x + pvenumber * offset_x_value + offset_x_text, start_y + offset_y_text + 2 * offset_y_value, id(font_mini), STATUS_COLOR, "%d%%", ram_percent);}
+      it.rectangle(start_x + offset_x_bar + pvenumber * offset_x_value + 20, start_y + 2 * offset_y_value, bar_width, bar_height, Color(120,120,120));
+      it.filled_rectangle(start_x + offset_x_bar + pvenumber * offset_x_value + 20, start_y + 2 * offset_y_value, (bar_width * ram_percent) / 100, bar_height, STATUS_COLOR);
+
+      // ==== Stockage============
+      sto_percent = (int) id(pve2_storage).state;
+
+      STATUS_COLOR=DEFAULT_COLOR;
+      if (sto_percent > 50 && sto_percent < 75) { STATUS_COLOR=MY_YELLOW;  if (severity < 2) {severity=2;}}
+      if (sto_percent > 75 && sto_percent < 100) { STATUS_COLOR=MY_RED;  if (severity < 3) {severity=3;}}
+
+      it.print(start_x + pvenumber * offset_x_value, start_y + 3 * offset_y_value,id(mdi_icons), STATUS_COLOR, "\U000F1632");
+      if (sto_percent > 0 && sto_percent < 100) { it.printf(start_x + pvenumber * offset_x_value + offset_x_text, start_y + offset_y_text + 3 * offset_y_value, id(font_mini), STATUS_COLOR, "%d%%", sto_percent);}
+      it.rectangle(start_x + offset_x_bar + pvenumber * offset_x_value + 20, start_y + 3 * offset_y_value, bar_width, bar_height, Color(120,120,120));
+      it.filled_rectangle(start_x + offset_x_bar + pvenumber * offset_x_value + 20, start_y + 3 * offset_y_value, (bar_width * sto_percent) / 100, bar_height, STATUS_COLOR);
+
+      if (severity == 1) {STATUS_COLOR = DEFAULT_COLOR;}
+      if (severity == 2) {STATUS_COLOR = MY_YELLOW;}
+      if (severity == 3) {STATUS_COLOR = MY_RED;}
+      it.print(start_x + offset_header + pvenumber * offset_x_value, start_y + 0 * offset_y_value, id(font_small),STATUS_COLOR, "proxmox2");
+      
+
+
+      // =========================
+      // PVE3
+      // =========================
+      pvenumber = 2;
+      severity=0;
+
+      // ==== CPU ================
+      cpu_percent = (int) id(pve3_cpu).state;
+
+      STATUS_COLOR=DEFAULT_COLOR;
+      if (cpu_percent > 50 && cpu_percent < 75) { STATUS_COLOR=MY_YELLOW;  if (severity < 2) {severity=2;}}
+      if (cpu_percent > 75 && cpu_percent < 100) { STATUS_COLOR=MY_RED;  if (severity < 3) {severity=3;}}
+      
+      it.print(start_x + pvenumber * offset_x_value, start_y + 1 * offset_y_value,id(mdi_icons), STATUS_COLOR, "\U000F0EE0");
+      if (cpu_percent > 0 && cpu_percent < 100) { it.printf(start_x + pvenumber * offset_x_value + offset_x_text, start_y + offset_y_text + 1 * offset_y_value, id(font_mini), STATUS_COLOR, "%d%%", cpu_percent);}
+      it.rectangle(start_x + offset_x_bar + pvenumber * offset_x_value + 20, start_y + 1 * offset_y_value, bar_width, bar_height, Color(120,120,120));
+      it.filled_rectangle(start_x + offset_x_bar + pvenumber * offset_x_value + 20, start_y + 1 * offset_y_value, (bar_width * cpu_percent) / 100, bar_height, STATUS_COLOR);
+
+      // ==== RAM ================
+      ram_percent = (int) id(pve3_mem).state;
+
+      STATUS_COLOR=DEFAULT_COLOR;
+      if (ram_percent > 50 && ram_percent < 75) { STATUS_COLOR=MY_YELLOW;  if (severity < 2) {severity=2;}}
+      if (ram_percent > 75 && ram_percent < 100) { STATUS_COLOR=MY_RED;  if (severity < 3) {severity=3;}}
+
+      it.print(start_x + pvenumber * offset_x_value, start_y + 2 * offset_y_value,id(mdi_icons), STATUS_COLOR, "\U000F035B");
+      if (ram_percent > 0 && ram_percent < 100) { it.printf(start_x + pvenumber * offset_x_value + offset_x_text, start_y + offset_y_text + 2 * offset_y_value, id(font_mini), STATUS_COLOR, "%d%%", ram_percent);}
+      it.rectangle(start_x + offset_x_bar + pvenumber * offset_x_value + 20, start_y + 2 * offset_y_value, bar_width, bar_height, Color(120,120,120));
+      it.filled_rectangle(start_x + offset_x_bar + pvenumber * offset_x_value + 20, start_y + 2 * offset_y_value, (bar_width * ram_percent) / 100, bar_height, STATUS_COLOR);
+
+      // ==== Stockage============
+      sto_percent = (int) id(pve3_storage).state;
+
+      STATUS_COLOR=DEFAULT_COLOR;
+      if (sto_percent > 50 && sto_percent < 75) { STATUS_COLOR=MY_YELLOW;  if (severity < 2) {severity=2;}}
+      if (sto_percent > 75 && sto_percent < 100) { STATUS_COLOR=MY_RED;  if (severity < 3) {severity=3;}}
+
+      it.print(start_x + pvenumber * offset_x_value, start_y + 3 * offset_y_value,id(mdi_icons), STATUS_COLOR, "\U000F1632");
+      if (sto_percent > 0 && sto_percent < 100) { it.printf(start_x + pvenumber * offset_x_value + offset_x_text, start_y + offset_y_text + 3 * offset_y_value, id(font_mini), STATUS_COLOR, "%d%%", sto_percent);}
+      it.rectangle(start_x + offset_x_bar + pvenumber * offset_x_value + 20, start_y + 3 * offset_y_value, bar_width, bar_height, Color(120,120,120));
+      it.filled_rectangle(start_x + offset_x_bar + pvenumber * offset_x_value + 20, start_y + 3 * offset_y_value, (bar_width * sto_percent) / 100, bar_height, STATUS_COLOR);
+
+      if (severity == 1) {STATUS_COLOR = DEFAULT_COLOR;}
+      if (severity == 2) {STATUS_COLOR = MY_YELLOW;}
+      if (severity == 3) {STATUS_COLOR = MY_RED;}
+
+      it.print(start_x + offset_header + pvenumber * offset_x_value, start_y + 0 * offset_y_value, id(font_small), STATUS_COLOR, "proxmox3");
+      
